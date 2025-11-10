@@ -1,3 +1,21 @@
+#!/bin/bash
+
+echo "🔧 Reparando server.js..."
+
+cd /Users/jorge/Documents/draco/agora-token-server
+
+# Eliminar server.js corrupto
+rm -f server.js
+
+# Copiar desde el backup
+if [ -f "server-backup.js" ]; then
+    cp server-backup.js server.js
+    echo "✅ server.js creado desde backup"
+else
+    echo "❌ No se encontró server-backup.js"
+    echo "📝 Creando server.js desde cero..."
+
+    cat > server.js << 'ENDOFFILE'
 const express = require('express');
 const cors = require('cors');
 const { RtcTokenBuilder, RtcRole } = require('agora-token');
@@ -176,4 +194,28 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+ENDOFFILE
+
+fi
+
+# Verificar que se creó correctamente
+if [ -f "server.js" ] && [ -s "server.js" ]; then
+    echo "✅ server.js creado correctamente"
+    echo "📊 Tamaño: $(wc -l server.js | awk '{print $1}') líneas"
+    echo ""
+    echo "🧪 Probando el servidor..."
+    node server.js &
+    SERVER_PID=$!
+    sleep 3
+
+    echo "📡 Haciendo health check..."
+    curl -s http://localhost:3000/health || echo "⚠️  El servidor no responde"
+
+    kill $SERVER_PID 2>/dev/null
+    echo ""
+    echo "✅ Listo para desplegar a Railway"
+else
+    echo "❌ Error: server.js no se pudo crear"
+    exit 1
+fi
 
