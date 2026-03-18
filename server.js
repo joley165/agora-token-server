@@ -35,40 +35,95 @@ try {
 const APP_ID = '295ef769f7314aeea12107397a856e6b';
 const APP_CERTIFICATE = '121c9dda722244359ee8c0c2b1306594';
 
+// ✅ FUNCIÓN COMPARTIDA PARA GENERAR TOKENS
+function generateAgoraToken(channelName, uid, role) {
+    // Convertir uid a número si viene como string
+    const uidNumber = typeof uid === 'string' ? parseInt(uid) || 0 : uid;
+
+    // Determinar rol: si es número usar directamente, si es string convertir
+    let userRole;
+    if (typeof role === 'number') {
+        userRole = role === 1 ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+    } else {
+        userRole = role === 'publisher' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+    }
+
+    const expirationTimeInSeconds = 86400; // 24 horas
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+
+    const token = RtcTokenBuilder.buildTokenWithUid(
+        APP_ID,
+        APP_CERTIFICATE,
+        channelName,
+        uidNumber,
+        userRole,
+        privilegeExpiredTs
+    );
+
+    return {
+        token,
+        appId: APP_ID,
+        channelName,
+        uid: uidNumber,
+        expiresAt: privilegeExpiredTs
+    };
+}
+
+// ✅ ENDPOINT NUEVO: /rtcToken (usado por la app)
+app.post('/rtcToken', (req, res) => {
+    try {
+        const { channelName, uid = 0, role = 1 } = req.body;
+
+        console.log('📡 [/rtcToken] Solicitud recibida:');
+        console.log(`   Canal: ${channelName}`);
+        console.log(`   UID: ${uid} (${typeof uid})`);
+        console.log(`   Role: ${role} (${typeof role})`);
+
+        if (!channelName) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'channelName es requerido'
+            });
+        }
+
+        const result = generateAgoraToken(channelName, uid, role);
+        console.log('✅ Token generado exitosamente');
+
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Error generando token:', error);
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+});
+
+// ✅ ENDPOINT ANTIGUO: /api/agora/token (mantener compatibilidad)
 app.post('/api/agora/token', (req, res) => {
     try {
         const { channelName, uid = 0, role = 'publisher' } = req.body;
+
+        console.log('📡 [/api/agora/token] Solicitud recibida:');
+        console.log(`   Canal: ${channelName}`);
+        console.log(`   UID: ${uid}`);
+        console.log(`   Role: ${role}`);
 
         if (!channelName) {
             return res.status(400).json({ error: 'channelName es requerido' });
         }
 
-        const userRole = role === 'publisher' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
-        const expirationTimeInSeconds = 86400;
-        const currentTimestamp = Math.floor(Date.now() / 1000);
-        const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+        const result = generateAgoraToken(channelName, uid, role);
+        console.log('✅ Token generado exitosamente');
 
-        const token = RtcTokenBuilder.buildTokenWithUid(
-            APP_ID,
-            APP_CERTIFICATE,
-            channelName,
-            uid,
-            userRole,
-            privilegeExpiredTs
-        );
-
-        console.log('✅ Token generado para canal:', channelName);
-
-        res.json({
-            token: token,
-            appId: APP_ID,
-            channelName: channelName,
-            uid: uid,
-            expiresAt: privilegeExpiredTs
-        });
+        res.json(result);
     } catch (error) {
         console.error('❌ Error generando token:', error);
-        res.status(500).json({ error: 'Error interno del servidor', message: error.message });
+        res.status(500).json({
+            error: 'Error interno del servidor',
+            message: error.message
+        });
     }
 });
 
@@ -167,12 +222,26 @@ app.post('/api/push/send-multicast', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+const RAILWAY_URL = process.env.RAILWAY_STATIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : null;
 
 app.listen(PORT, () => {
     console.log('🚀 Servidor ejecutándose en puerto', PORT);
     console.log('📡 App ID:', APP_ID.substring(0, 8) + '...');
     console.log('🔐 App Certificate configurado');
     console.log('🔔 Firebase Push:', firebaseInitialized ? 'ACTIVO ✅' : 'INACTIVO ⚠️');
+
+    // ✅ Keep-alive: ping cada 10 minutos para evitar que Railway duerma el servidor
+    const serverUrl = RAILWAY_URL || `http://localhost:${PORT}`;
+    setInterval(() => {
+        const http = serverUrl.startsWith('https') ? require('https') : require('http');
+        http.get(`${serverUrl}/health`, (res) => {
+            console.log(`💓 Keep-alive ping: ${res.statusCode}`);
+        }).on('error', (e) => {
+            console.log(`⚠️ Keep-alive error: ${e.message}`);
+        });
+    }, 10 * 60 * 1000); // cada 10 minutos
 });
 
 module.exports = app;
