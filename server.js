@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+// ✅ agora-token v2.0.5: RtcTokenBuilder.buildTokenWithUid genera AccessToken2 (007...) compatible con SDK 4.x
 const { RtcTokenBuilder, RtcRole } = require('agora-token');
 const admin = require('firebase-admin');
 
@@ -48,18 +49,20 @@ function generateAgoraToken(channelName, uid, role) {
         userRole = role === 'publisher' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
     }
 
+    // ✅ AccessToken2: tokenExpire y privilegeExpire en segundos RELATIVOS desde ahora
     const expirationTimeInSeconds = 86400; // 24 horas
-    const currentTimestamp = Math.floor(Date.now() / 1000);
-    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
+    // RtcTokenBuilder.buildTokenWithUid con 7 args genera AccessToken2 (007...) igual que RtcTokenBuilder2
     const token = RtcTokenBuilder.buildTokenWithUid(
         APP_ID,
         APP_CERTIFICATE,
         channelName,
         uidNumber,
         userRole,
-        privilegeExpiredTs
+        expirationTimeInSeconds,   // tokenExpire  (segundos relativos)
+        expirationTimeInSeconds    // privilegeExpire (segundos relativos)
     );
+    const privilegeExpiredTs = Math.floor(Date.now() / 1000) + expirationTimeInSeconds;
 
     return {
         token,
