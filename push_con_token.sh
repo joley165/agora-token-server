@@ -8,5 +8,4 @@ fi
 git remote set-url origin "https://joley165:${TOKEN}@github.com/joley165/agora-token-server.git"
 git push origin main
 git remote set-url origin "https://github.com/joley165/agora-token-server.git"
-echo "Listo"
-
+echo "✅ Push completado. Railway redesplegará automáticamente en ~2 minutos."
